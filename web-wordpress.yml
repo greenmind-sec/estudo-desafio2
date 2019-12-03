@@ -1,0 +1,201 @@
+#- hosts: all
+- hosts: centos
+  #sudo: True
+  become: yes
+  user: centos
+  tasks:
+    - name: "Atualiza pacotes"
+      shell: sudo yum -y update
+
+    - name: "Instalar pre requisitos [NGINX]"
+      yum:
+        name: epel-release
+        state: latest
+
+    - name: "Instalar pre requisitos [yum-utils]"
+      yum:
+        name: yum-utils
+        state: latest
+
+
+    # NGINX
+    - name: "Instalar [NGINX]"
+      yum:
+        name: nginx
+        state: latest
+
+    # WGET
+    - name: "Instalar [WGET]"
+      yum:
+        name: wget
+        state: latest
+
+    # MYSQL
+    - name: "Instalar [MYSQL]"
+      yum:
+        name: mariadb-server
+        state: latest
+
+    - name: Criando pasta PHP
+      shell: rm -rf /var/run/php && mkdir /var/run/php && chmod 755 /var/run/php
+
+    - name: "Instalando remi 7"
+      yum:
+        name: http://rpms.remirepo.net/enterprise/remi-release-7.rpm
+        state: latest
+
+    - name: "Instalando remi 7"
+      shell: sudo yum-config-manager --enable remi-php73
+
+    - name: "Instalando [php7.3]"
+      yum:
+        name: php
+        state: latest
+
+    - name: "Instalando [php7.3-common]"
+      yum:
+        name: php-common
+        state: latest
+
+    - name: "Instalando [php7.3-mysql]"
+      yum:
+        name: php-opcache
+        state: latest
+
+    - name: "Instalando [php7.3-gd]"
+      yum:
+        name: php-mcrypt
+        state: latest
+
+    - name: "Instalando [php7.3-xml]"
+      yum:
+        name: php-cli
+        state: latest
+
+    - name: "Instalando [php7.3-mbstring]"
+      yum:
+        name: php-gd
+        state: latest
+
+    - name: "Instalando [php7.3-mcrypt]"
+      yum:
+        name: php-curl
+        state: latest
+
+    - name: "Instalando [php7.3-mcrypt]"
+      yum:
+        name: php-mysqlnd
+        state: latest
+
+    - name: Reiniciando Daeler
+      service:
+        name: daemon_reload
+
+    - name: "Instalando [php-fpm]"
+      yum:
+        name: php-fpm
+        state: latest
+
+    - name: "Iniciando [Nginx]"
+      shell: sudo systemctl start nginx
+
+    - name: "Iniciando [Mysqld]"
+      shell: sudo systemctl start mariadb
+
+    - name: "Iniciando [php7.3-fpm]"
+      shell: sudo systemctl restart php-fpm
+
+    - name: "Criando diretorio caso não exista"
+      file:
+        path: /var/www/html/blog
+        state: directory
+        mode: '777'
+        recurse: yes
+
+    - name: "Adicionar ao grupo [Wordpress]"
+      group:
+        name: wordpress
+
+    - name: "Adicionar usuario [Wordpress]"
+      user:
+        name: wordpress
+        group: wordpress
+        home: /var/www/html/blog/wordpress/
+
+    - name: "Realizando download [Wordpress]"
+      get_url:
+        url: https://wordpress.org/latest.tar.gz
+        dest: /var/www/html/blog
+
+    - name: "Extrair arquivo [Wordpress]"
+      unarchive:
+        src: /var/www/html/blog/wordpress-5.3.tar.gz
+        dest: /var/www/html/blog
+        remote_src: yes
+
+    - name: "Copiar [WordPress config file]"
+      template:
+        src: configs/wp-config.php
+        dest: "/var/www/html/blog/wordpress"
+
+    - name: "Alterar resposavel [WordPress installation]"
+      file:
+        path: "/var/www/html/blog/wordpress/"
+        owner: wordpress
+        group: wordpress
+        state: directory
+        recurse: yes
+        setype: httpd_sys_content_t
+
+    - name: "Iniciar [php7.3-fpm Service]"
+      service:
+        name: php-fpm
+        state: started
+        enabled: yes
+
+    # #####
+    # MYSQL
+    # https://docs.ansible.com/ansible/latest/modules/mysql_user_module.html
+    # #####
+    - name: "Instalando [python-pip]"
+      yum:
+        name: python-pip
+        state: latest
+    - name: "Make sure pymysql is present"
+      become: true # needed if the other tasks are not played as root
+      pip:
+        name: pymysql
+        state: present
+
+    - name: "Criar [WordPress database]"
+      mysql_db:
+        name: wordpress
+        state: present
+
+    - name: "Criar [WordPress database user]"
+      mysql_user:
+        name: wordpress_user
+        password: wordpress_pass
+        priv: wordpress.*:ALL
+        host: "localhost"
+        state: present
+
+    #######
+    # NGINX
+    #
+    ######
+    - name: "Copiar [NGINX config file]"
+      template:
+        src: configs/wordpress.conf
+        dest: "/etc/nginx/conf.d/wordpress.conf"
+
+    - name: "Restart [NGINX]"
+      shell: sudo systemctl restart nginx
+
+    - name: "Copiar [PHP config file]"
+      template:
+        src: configs/www.conf
+        dest: "/etc/php-fpm.d/"
+
+    - name: "Restart [PHP-FPM]"
+      shell: sudo systemctl restart php-fpm
